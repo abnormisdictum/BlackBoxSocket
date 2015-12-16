@@ -1,5 +1,6 @@
 package org.structure;
 
+import java.io.UnsupportedEncodingException;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.NoSuchAlgorithmException;
@@ -9,11 +10,15 @@ import javax.crypto.SecretKey;
 
 public class Hash 
 {
-	public static String getHMAC(SecretKey sk, String time) throws NoSuchAlgorithmException, InvalidKeyException
+	private static String CHARSET = "UTF-16";
+	public static String getHMAC(SecretKey sk, String time, long movingFactor_long) throws NoSuchAlgorithmException, InvalidKeyException, IllegalStateException, UnsupportedEncodingException
 	{
+		String movingFactor = String.valueOf(movingFactor_long);
 		Mac m = Mac.getInstance("HmacSHA256");
 		m.init((Key)sk);
-		return FormatOTP(m.doFinal(time.getBytes()));
+		m.update(movingFactor.getBytes(CHARSET));
+		m.update(time.getBytes(CHARSET));
+		return FormatOTP(m.doFinal());
 	}
 	
 	private static String FormatOTP(byte[] hmac)

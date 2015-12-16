@@ -53,10 +53,10 @@ public class AesCrypt
 		return (SecretKey)kg.generateKey();
 	}
 	
-	public static SecretKey generateMessageKey(SecretKey m_sk, byte[] salt, String time) throws NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, InvalidKeyException
+	public static SecretKey generateMessageKey(SecretKey messageSecretKey, byte[] salt, String time, long movingFactor) throws NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, InvalidKeyException
 	{
 		MessageDigest md = MessageDigest.getInstance("SHA-256");
-		String s = new String(md.digest(Hash.getHMAC(m_sk, time).getBytes()));
+		String s = new String(md.digest(Hash.getHMAC(messageSecretKey, time, movingFactor).getBytes()));
 		SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
 		PBEKeySpec spec = new PBEKeySpec(s.toCharArray(), salt, 65536, KEY_SIZE);
 		return new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");

@@ -21,10 +21,12 @@ import org.json.simple.parser.ParseException;
 
 public class Message 
 {
-	public String message;
-	public String signature;
-	public String salt;
-	public String time;
+	private String message;
+	private String signature;
+	private String salt;
+	private String time;
+	private long movingFactor;
+	
 	
 	public Message(String json, String time) throws ParseException
 	{
@@ -32,27 +34,29 @@ public class Message
 		this.fromString(json);
 	}
 	
-	public Message(String message, SecretKey m_sk, PrivateKey m_pk, String time) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, SignatureException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	public Message(String message, SecretKey messageSecretKey, PrivateKey localPrivateKey, String time, long movingFactor_long) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, SignatureException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
 	{
 		this.time = time;
-		this.setMessage(message, m_sk, m_pk);
+		this.movingFactor = movingFactor_long;
+		this.setMessage(message, messageSecretKey, localPrivateKey, movingFactor_long);
 	}
 	
-	private String setMessage(String message, SecretKey m_sk, PrivateKey m_pk) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, SignatureException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	private String setMessage(String message, SecretKey messageSecretKey, PrivateKey localPrivateKey, long movingFactor_long) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, SignatureException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
 	{
+		this.movingFactor = movingFactor_long;
 		byte[] salt = AesCrypt.getSalt();
 		this.salt = Base64.encodeBase64String(salt);
-		SecretKey sk = AesCrypt.generateMessageKey(m_sk, salt, this.time);
-		this.signature = Authenticator.sign(message, m_pk);
+		SecretKey sk = AesCrypt.generateMessageKey(messageSecretKey, salt, this.time, this.movingFactor);
+		this.signature = Authenticator.sign(message, localPrivateKey);
 		this.message = AesCrypt.encrypt(message, sk);
 		return this.toString();
 	}
 
-	public String getMessage(SecretKey m_sk, PublicKey m_pk) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, SignatureException, InvalidAlgorithmParameterException
+	public String getMessage(SecretKey messageSecretKey, PublicKey remotePublicKey, long movingFactor_long) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, SignatureException, InvalidAlgorithmParameterException
 	{
-		SecretKey sk = AesCrypt.generateMessageKey(m_sk, Base64.decodeBase64(salt), this.time);
+		SecretKey sk = AesCrypt.generateMessageKey(messageSecretKey, Base64.decodeBase64(salt), this.time, movingFactor_long);
 		String message = AesCrypt.decrypt(this.message, sk);
-		if(Authenticator.verify(message, signature, m_pk)==false)
+		if(Authenticator.verify(message, signature, remotePublicKey)==false)
 		{
 			message="Corrupted Message. Message object has been destroyed.";
 			this.message = "";

@@ -20,12 +20,14 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 
+import org.apache.commons.math3.random.RandomDataGenerator;
 import org.structure.AesCrypt;
 import org.structure.Message;
 import org.structure.RsaCrypt;
 
 public class BlackBoxSocket 
 {
+	private String END_SESSION_STRING = "DESTROY_SESSION";
 	private Socket socket;
 	private InputStream inStream_raw;
 	private OutputStream outStream_raw;
@@ -40,7 +42,10 @@ public class BlackBoxSocket
 	private boolean isClient;
 	private boolean isClientControlled; //Whether the Message & Outer layer key generation is done by the client.
 	
-	public BlackBoxSocket(Socket socket, boolean isClient, boolean isClientControlled) throws IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	private long movingFactor;
+	private long movingFactor_increment;
+	
+	public BlackBoxSocket(Socket socket, boolean isClient, boolean isClientControlled) throws IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, NumberFormatException, InvalidAlgorithmParameterException
 	{
 		this.socket = socket;
 		this.isClient = isClient;
@@ -60,7 +65,7 @@ public class BlackBoxSocket
 			initAsServer();
 	}
 	
-	private void initAsClient() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	private void initAsClient() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, NumberFormatException, InvalidAlgorithmParameterException
 	{
 		this.outStream.writeUTF(RsaCrypt.convertToString(this.localPublicKey));
 		this.remotePublicKey = RsaCrypt.convertFromString((String)this.inStream.readUTF()); //Get Server's Public Key.
@@ -70,18 +75,27 @@ public class BlackBoxSocket
 		{
 			this.messageSecretKey = RsaCrypt.unwrapKey((String)this.inStream.readUTF(), this.localPrivateKey); //Get Message SecretKey from server.
 			this.outerLayerSecretKey = RsaCrypt.unwrapKey((String)this.inStream.readUTF(), this.localPrivateKey); //Get OuterLayer SecretKey from server.
+			String movingFactor = AesCrypt.decrypt(this.inStream.readUTF(), this.outerLayerSecretKey);
+			this.movingFactor = Long.parseLong(movingFactor);
+			String movingFactor_increment = AesCrypt.decrypt(this.inStream.readUTF(), this.outerLayerSecretKey);
+			this.movingFactor_increment = Long.parseLong(movingFactor_increment);
 		}
 		
 		if(this.isClientControlled) //If Key generation is controlled by client, Generate Message and OuterLayer SecretKeys and send them to server.
 		{
+			RandomDataGenerator rdg = new RandomDataGenerator();
+			this.movingFactor = rdg.nextSecureLong(0, Long.MAX_VALUE);
+			this.movingFactor_increment = rdg.nextSecureLong(0, 200);
 			this.messageSecretKey = AesCrypt.generateKey();
 			this.outerLayerSecretKey = AesCrypt.generateKey();
 			this.outStream.writeUTF(RsaCrypt.wrapKey(this.messageSecretKey, this.remotePublicKey));
 			this.outStream.writeUTF(RsaCrypt.wrapKey(this.outerLayerSecretKey, this.remotePublicKey));
+			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor), this.outerLayerSecretKey));
+			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor_increment), this.outerLayerSecretKey));
 		}
 	}
 	
-	private void initAsServer() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	private void initAsServer() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException
 	{
 		this.remotePublicKey = RsaCrypt.convertFromString((String)this.inStream.readUTF());
 		this.outStream.writeUTF(RsaCrypt.convertToString(localPublicKey));
@@ -89,48 +103,74 @@ public class BlackBoxSocket
 		
 		if(!this.isClientControlled) //If Key generation isn't controlled by client, Generate Message and OuterLayer SecretKeys and send them to client.
 		{
+			RandomDataGenerator rdg = new RandomDataGenerator();
+			this.movingFactor = rdg.nextSecureLong(0, Long.MAX_VALUE);
+			this.movingFactor_increment = rdg.nextSecureLong(0, 200);
 			this.messageSecretKey = AesCrypt.generateKey();
 			this.outerLayerSecretKey = AesCrypt.generateKey();
 			this.outStream.writeUTF(RsaCrypt.wrapKey(this.messageSecretKey, this.remotePublicKey));
 			this.outStream.writeUTF(RsaCrypt.wrapKey(this.outerLayerSecretKey, this.remotePublicKey));
+			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor), this.outerLayerSecretKey));
+			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor_increment), this.outerLayerSecretKey));
 		}
 		
 		if(this.isClientControlled) //If Key Generation is controlled by client, get Message and OuterLayer SecretKeys from client.
 		{
+			
 			this.messageSecretKey = RsaCrypt.unwrapKey((String)this.inStream.readUTF(), this.localPrivateKey); //Get Message SecretKey from server.
 			this.outerLayerSecretKey = RsaCrypt.unwrapKey((String)this.inStream.readUTF(), this.localPrivateKey); //Get OuterLayer SecretKey from server.
+			String movingFactor = AesCrypt.decrypt(this.inStream.readUTF(), this.outerLayerSecretKey);
+			this.movingFactor = Long.parseLong(movingFactor);
+			String movingFactor_increment = AesCrypt.decrypt(this.inStream.readUTF(), this.outerLayerSecretKey);
+			this.movingFactor_increment = Long.parseLong(movingFactor_increment);
 		}
 	}
 	
 	public SecretKey getOuterLayerSecretKey()
 	{
-		return outerLayerSecretKey;
+		return this.outerLayerSecretKey;
 	}
 	
 	public SecretKey getMessageSecretKey()
 	{
-		return messageSecretKey;
+		return this.messageSecretKey;
 	}
 	
 	public PublicKey getLocalPublicKey()
 	{
-		return localPublicKey;
+		return this.localPublicKey;
 	}
 	
 	public PrivateKey getLocalPrivateKey()
 	{
-		return localPrivateKey;
+		return this.localPrivateKey;
 	}
 	
 	public PublicKey getRemotePublicKey()
 	{
-		return remotePublicKey;
+		return this.remotePublicKey;
+	}
+	
+	public long getMovingFactor()
+	{
+		return this.movingFactor;
+	}
+	
+	public long getNextMovingFactor()
+	{
+		return this.movingFactor+=this.movingFactor_increment;
+	}
+	
+	public long getPreviousMovingFactor()
+	{
+		return this.movingFactor-=this.movingFactor_increment;
 	}
 	
 	public String readMessage() throws IOException, InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException
 	{
 		String revieved = this.inStream.readUTF();
 		String json = AesCrypt.decrypt(revieved, this.outerLayerSecretKey);
+		this.movingFactor += this.movingFactor_increment;
 		return json;
 	}
 	
@@ -138,6 +178,13 @@ public class BlackBoxSocket
 	{
 		String json = mes.toString();
 		outStream.writeUTF(AesCrypt.encrypt(json, this.outerLayerSecretKey));
+		this.movingFactor += this.movingFactor_increment;
+	}
+	
+	public void sendEndSession() throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, UnsupportedEncodingException, IllegalBlockSizeException, BadPaddingException, IOException
+	{
+		outStream.writeUTF(AesCrypt.encrypt(this.END_SESSION_STRING, this.outerLayerSecretKey));
+		this.movingFactor += this.movingFactor_increment;
 	}
 	
 	public boolean isClientControlled()
@@ -150,8 +197,19 @@ public class BlackBoxSocket
 		return isClient;
 	}
 	
-	public void destroy()
+	public String getEndSessionString()
 	{
+		return this.END_SESSION_STRING;
+	}
+	
+	public void destroy(boolean sessionHasEnded) throws IOException, InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	{
+		if(!sessionHasEnded)
+			sendEndSession();
+		
+		this.socket.close();
+		this.inStream.close();
+		this.outStream.close();
 		this.socket = null;
 		this.inStream = null;
 		this.outStream = null;
@@ -161,6 +219,7 @@ public class BlackBoxSocket
 		this.messageSecretKey = null;
 		this.outerLayerSecretKey = null;
 		this.isClientControlled = false;
+		this.isClient = false;
 		System.gc();
 	}
 }
