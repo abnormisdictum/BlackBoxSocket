@@ -1,7 +1,5 @@
 # BlackBoxSocket
 
-<br />UPDATE: Moving factor has been added to Time based OTP in order to make sure that the SecretKeys for each individual message is changed when created under a 60 seconds. This MovingFactor is incremented by a MovingFactor_increment parameter each time a new message is sent or recieved. Both these parameters are agreed upon when BlackBoxSocket is initialized.
-
 <br />My twist to a Java based secure layer for socket communication.
 <br />Essentially what it does is as follows:
 <br />1. When a BlackBox Client or Server is connects client send over the client's public key.
