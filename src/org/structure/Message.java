@@ -26,48 +26,60 @@ public class Message
 	private String salt;
 	private String time;
 	private long movingFactor;
+	private boolean isNullMessage = false;
+	private PrivateKey localPrivateKey;
+	private PublicKey remotePublicKey;
+	private SecretKey messageSecretKey;
 	
 	
-	public Message(String json, String time) throws ParseException
+	public Message(String message_string, SecretKey messageSecretKey, PrivateKey localPrivateKey, boolean usesTime, long movingFactor_long) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, SignatureException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
 	{
-		this.time = time;
-		this.fromString(json);
+		this.movingFactor = movingFactor_long; //Save Moving factor for this Message
+		
+		// Get time parameter, if algorithm uses time.
+		if(usesTime)
+			this.time = new Clock().getTime();
+		else
+			this.time = "";
+		
+		this.localPrivateKey = localPrivateKey; //Save the local private key for this message
+		this.salt = Base64.encodeBase64String(AesCrypt.getSalt()); // Get Salt and save it for this message
+		this.messageSecretKey = messageSecretKey; //Save messageSecretKey to derive SecretKey for this message later.
+		SecretKey key = AesCrypt.generateMessageKey(this.messageSecretKey, Base64.decodeBase64(this.salt), this.time, this.movingFactor); //Create & save this message's key.
+		this.signature = Authenticator.sign(message_string, this.localPrivateKey); //Get and Save the signature
+		this.message = AesCrypt.encrypt(message_string, key); //Create the encrypted message text.
 	}
 	
-	public Message(String message, SecretKey messageSecretKey, PrivateKey localPrivateKey, String time, long movingFactor_long) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, SignatureException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	public Message() // Create a null message Object.
 	{
-		this.time = time;
-		this.movingFactor = movingFactor_long;
-		this.setMessage(message, messageSecretKey, localPrivateKey, movingFactor_long);
+		isNullMessage = true;
 	}
 	
-	private String setMessage(String message, SecretKey messageSecretKey, PrivateKey localPrivateKey, long movingFactor_long) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, SignatureException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException
+	public Message(String json, SecretKey messageSecretKey, PublicKey remotePublicKey, boolean usesTime, long movingFactor) throws ParseException, InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException
 	{
-		this.movingFactor = movingFactor_long;
-		byte[] salt = AesCrypt.getSalt();
-		this.salt = Base64.encodeBase64String(salt);
-		SecretKey sk = AesCrypt.generateMessageKey(messageSecretKey, salt, this.time, this.movingFactor);
-		this.signature = Authenticator.sign(message, localPrivateKey);
-		this.message = AesCrypt.encrypt(message, sk);
-		return this.toString();
+		this.movingFactor = movingFactor; //Save moving factor for this message.
+		
+		//Get time parameter, if algorithm uses it.
+		if(usesTime)
+			this.time = new Clock().getTime();
+		else
+			this.time = "";
+		this.remotePublicKey = remotePublicKey; //Save the remote Public key for verification.
+		this.messageSecretKey = messageSecretKey;
+		
+		this.fromString(json); //Convert the JSON string to message object
 	}
 
-	public String getMessage(SecretKey messageSecretKey, PublicKey remotePublicKey, long movingFactor_long) throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, SignatureException, InvalidAlgorithmParameterException
+	public String getMessage() throws InvalidKeyException, NoSuchAlgorithmException, UnsupportedEncodingException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, SignatureException, InvalidAlgorithmParameterException
 	{
-		SecretKey sk = AesCrypt.generateMessageKey(messageSecretKey, Base64.decodeBase64(salt), this.time, movingFactor_long);
-		String message = AesCrypt.decrypt(this.message, sk);
-		if(Authenticator.verify(message, signature, remotePublicKey)==false)
+		SecretKey key = AesCrypt.generateMessageKey(this.messageSecretKey, Base64.decodeBase64(this.salt), this.time, this.movingFactor); //Generate and save the Key for this message.
+		String message_string = AesCrypt.decrypt(this.message, key); //Decrypt message.
+		if(!Authenticator.verify(message_string, this.signature, this.remotePublicKey)) //Authenticate if message is the same as the signature, and destroy if it isn't verified.
 		{
-			message="Corrupted Message. Message object has been destroyed.";
-			this.message = "";
-			this.message = null;
-			this.signature = "";
-			this.signature = null;
-			this.salt = "";
-			this.salt = null;
+			this.destroy(); //Destroy.
+			message_string = "Corrupted Message Object. Message Object is made null."; //return message output.
 		}
-		
-		return message;
+		return message_string;
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -87,5 +99,25 @@ public class Message
 		this.message = (String) mes.get("Message");
 		this.signature = (String) mes.get("Signature");
 		this.salt = (String) mes.get("Salt");
+	}
+	
+	public boolean isNullMessage()
+	{
+		return this.isNullMessage;
+	}
+	
+	public void destroy()
+	{
+		this.message = "";
+		this.message = null;
+		this.signature = "";
+		this.signature = null;
+		this.salt = "";
+		this.salt = null;
+		this.localPrivateKey = null;
+		this.remotePublicKey = null;
+		this.messageSecretKey = null;
+		this.movingFactor = 0;
+		this.isNullMessage = true;
 	}
 }

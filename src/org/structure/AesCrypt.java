@@ -40,11 +40,10 @@ public class AesCrypt
 	public static String decrypt(String enc, SecretKey sk) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, UnsupportedEncodingException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException
 	{
 		String[] enc_split = enc.split("<IV>"); //Split String to get IV and message data.
-		byte[] iv = Base64.decodeBase64(enc_split[1]);
-		byte[] message = Base64.decodeBase64(enc_split[0]);
-		Cipher c = Cipher.getInstance(TRANSFORM);
+		byte[] iv = Base64.decodeBase64(enc_split[1]); //Convert IV to byte[]
+		byte[] message = Base64.decodeBase64(enc_split[0]); //convert Message to byte[]
+		Cipher c = Cipher.getInstance(TRANSFORM); //Initialise cipher.
 		c.init(Cipher.DECRYPT_MODE, sk, new IvParameterSpec(iv));
-		
 		return new String(c.doFinal(message), CHARSET);
 	}
 	

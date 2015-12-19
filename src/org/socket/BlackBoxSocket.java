@@ -41,15 +41,18 @@ public class BlackBoxSocket
 	private PublicKey remotePublicKey; //Client's Public Key sent to Server for verifying Authenticated Messages from client.
 	private boolean isClient;
 	private boolean isClientControlled; //Whether the Message & Outer layer key generation is done by the client.
+	private boolean useTime;
 	
 	private long movingFactor;
 	private long movingFactor_increment;
 	
-	public BlackBoxSocket(Socket socket, boolean isClient, boolean isClientControlled) throws IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, NumberFormatException, InvalidAlgorithmParameterException
+	public BlackBoxSocket(Socket socket, boolean isClient, boolean isClientControlled, boolean useTime) throws IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, NumberFormatException, InvalidAlgorithmParameterException
 	{
 		this.socket = socket; //Get Socket object that the BlackBoxSocket is supposed to sit upon.
 		this.isClient = isClient; //Whether or not this instance of BlackBoxSocket is a client.
 		this.isClientControlled = isClientControlled; //Whether this instance is a Client controlled instance. i.e. are the MessageSecretKey and OuterLayerSecretKey given by Client.
+		this.useTime = useTime;
+		
 		this.inStream_raw = this.socket.getInputStream(); // Get the Socket's input stream.
 		this.outStream_raw = this.socket.getOutputStream(); // Get the Socket's output stream.
 		this.inStream = new DataInputStream(this.inStream_raw); //Convert SocketInputStrean to DataInputStream. This throws ClassException when done directly hence done in two steps.
@@ -80,6 +83,7 @@ public class BlackBoxSocket
 			this.movingFactor = Long.parseLong(movingFactor); //Convert Moving factor to long for calculations.
 			String movingFactor_increment = AesCrypt.decrypt(this.inStream.readUTF(), this.outerLayerSecretKey); //Get Moving factor increment value.
 			this.movingFactor_increment = Long.parseLong(movingFactor_increment); //Convert to long for calculations.
+			this.useTime = this.inStream.readBoolean(); //Get whether to useTime in messages.
 		}
 		
 		if(this.isClientControlled) //If Key generation is controlled by client, Generate Message and OuterLayer SecretKeys and send them to server.
@@ -93,6 +97,7 @@ public class BlackBoxSocket
 			this.outStream.writeUTF(RsaCrypt.wrapKey(this.outerLayerSecretKey, this.remotePublicKey)); //Send outerLayerSecretKey to server.
 			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor), this.outerLayerSecretKey)); //Send movingFactor.
 			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor_increment), this.outerLayerSecretKey)); // Send movingFactor increment.
+			this.outStream.writeBoolean(useTime); //Send time usage parameter.
 		}
 	}
 	 
@@ -114,6 +119,7 @@ public class BlackBoxSocket
 			this.outStream.writeUTF(RsaCrypt.wrapKey(this.outerLayerSecretKey, this.remotePublicKey)); //Send outerLayerSecretKey to client.
 			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor), this.outerLayerSecretKey)); //Send movingFactor.
 			this.outStream.writeUTF(AesCrypt.encrypt(String.valueOf(this.movingFactor_increment), this.outerLayerSecretKey)); //Send movingFactor increment.
+			this.outStream.writeBoolean(useTime); //Send time usage parameter.
 		}
 		
 		if(this.isClientControlled) //If Key Generation is controlled by client, get Message and OuterLayer SecretKeys from client.
@@ -125,6 +131,7 @@ public class BlackBoxSocket
 			this.movingFactor = Long.parseLong(movingFactor); //Convert to long for addition operation.
 			String movingFactor_increment = AesCrypt.decrypt(this.inStream.readUTF(), this.outerLayerSecretKey); //Get movingFactor increment value.
 			this.movingFactor_increment = Long.parseLong(movingFactor_increment); //Convert to long for addition.
+			this.useTime = this.inStream.readBoolean(); //Get whether to useTime in messages.
 		}
 	}
 	
@@ -225,5 +232,10 @@ public class BlackBoxSocket
 	public String getEndSessionString()
 	{
 		return this.END_SESSION_STRING;
+	}
+	
+	public boolean getUseTimeParameter()
+	{
+		return this.useTime;
 	}
 }
